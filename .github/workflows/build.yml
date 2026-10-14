@@ -1,0 +1,50 @@
+name: Build APK
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential git zip unzip openjdk-17-jdk autoconf automake libtool libltdl-dev pkg-config zlib1g-dev libncurses-dev cmake libffi-dev libssl-dev
+      - name: Install Buildozer
+        run: pip install "buildozer==1.5.0" "cython==0.29.36"
+      - name: Build APK
+        shell: bash
+        run: |
+          set -o pipefail
+          buildozer -v android debug 2>&1 | tee build.log
+      - name: Show the real error
+        if: failure()
+        shell: bash
+        run: |
+          sed "s/\x1b\[[0-9;]*m//g" build.log > clean.log
+          {
+            echo "## Build error - copy this and send it"
+            echo "\`\`\`"
+            grep -v checking clean.log | grep -n -i -E "\[ERROR\]|error:|Traceback|undefined macro|No such file|404|fatal|Could not|Exception" | tail -n 25 | cut -c1-250
+            echo "\`\`\`"
+            echo "### Last 40 lines"
+            echo "\`\`\`"
+            grep -v "^#" clean.log | tail -n 40 | cut -c1-250
+            echo "\`\`\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Save full log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lifelog-apk
+          path: bin/*.apk
+          if-no-files-found: error
